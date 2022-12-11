@@ -16,6 +16,22 @@
             <input type="text" name="search" id="search-query">
             <input type="submit">
         </form>
+
+        {% if feed_url %}
+        <h2>Feed URL</h2>
+        <div>
+            <code>{{feed_url}}</code>
+        </div>
+        {% endif %}
+
+        {% if search_results %}
+        <h2>Results</h2>
+        <div>
+            {% for result in search_results %}
+                <p>{{result.name}} {{result.url}}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
     </main>
 </body>
 </html>

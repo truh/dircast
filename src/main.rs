@@ -1,11 +1,11 @@
 use actix_web::{
     cookie::Cookie, get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-// use awscreds;
 // use rss::{ChannelBuilder, Item};
-// use s3::Bucket;
-// use s3::Region;
+use s3::Bucket;
+use s3::Region;
 use serde::Deserialize;
+use serde::Serialize;
 use std::env;
 use std::fs;
 use tera::Tera;
@@ -16,28 +16,51 @@ struct AuthStruct {
     pass: String,
 }
 
-// fn create_bucket_from_env() -> Option<Bucket> {
-//     if let Ok(bucket_name) = env::var("DIRCAST_BUCKET_NAME") {
-//         if let Ok(credentials) = awscreds::Credentials::from_env() {
-//             if let Ok(bucket) = Bucket::new(
-//                 bucket_name.as_str(),
-//                 Region::EuCentral1,
-//                 // Credentials are collected from environment, config, profile or instance metadata
-//                 credentials,
-//             ) {
-//                 return Some(bucket);
-//             } else {
-//                 println!("Failed to create Bucket");
-//             }
-//         } else {
-//             println!("Failed to read AWS credentials from env.");
-//         }
-//     } else {
-//         println!("Env variable DIRCAST_BUCKET_NAME unset!");
-//     }
-//
-//     None
-// }
+#[derive(Deserialize)]
+struct SearchStruct {
+    search: String,
+}
+
+#[derive(Serialize)]
+struct FileObject {
+    name: String,
+    url: String,
+}
+
+fn create_bucket_from_env() -> Option<Bucket> {
+    if let Ok(bucket_name) = env::var("DIRCAST_BUCKET_NAME") {
+        if let Ok(credentials) = awscreds::Credentials::from_env() {
+            if let Ok(bucket) = Bucket::new(bucket_name.as_str(), Region::EuCentral1, credentials) {
+                return Some(bucket);
+            } else {
+                println!("Failed to create Bucket");
+            }
+        } else {
+            println!("Failed to read AWS credentials from env.");
+        }
+    } else {
+        println!("Env variable DIRCAST_BUCKET_NAME unset!");
+    }
+
+    None
+}
+
+async fn bucket_search(bucket: &Bucket, query: String) -> Vec<FileObject> {
+    let mut v: Vec<FileObject> = Vec::new();
+    if let Ok(results) = bucket.list(query, None).await {
+        for result in results {
+            for item in result.contents {
+                if let Ok(url) = bucket.presign_get(item.key.as_str(), 86400, None) {
+                    v.push(FileObject {
+                        name: item.key,
+                        url,
+                    });
+                }
+            }
+        }
+    }
+    v
+}
 
 fn check_auth(auth_struct: &AuthStruct) -> bool {
     let dot_htpasswd =
@@ -87,18 +110,30 @@ async fn web_search(req: HttpRequest, templates: web::Data<tera::Tera>) -> impl 
 }
 
 #[post("/")]
-async fn web_search_results(req: HttpRequest, templates: web::Data<tera::Tera>) -> impl Responder {
-    let context = tera::Context::new();
+async fn web_search_results(
+    req: HttpRequest,
+    form: web::Form<SearchStruct>,
+    templates: web::Data<tera::Tera>,
+) -> impl Responder {
+    let search_struct = form.into_inner();
 
     if check_auth_cookie(req).is_some() {
-        match templates.render("search.html", &context) {
-            Ok(s) => HttpResponse::Ok().content_type("text/html").body(s),
-            Err(e) => {
-                println!("{:?}", e);
-                HttpResponse::InternalServerError()
-                    .content_type("text/html")
-                    .body("<p>Something went wrong!</p>")
+        if let Some(bucket) = create_bucket_from_env() {
+            let search_results = bucket_search(&bucket, search_struct.search).await;
+            let mut context = tera::Context::new();
+            context.insert("search_results", &search_results);
+
+            match templates.render("search.html", &context) {
+                Ok(s) => HttpResponse::Ok().content_type("text/html").body(s),
+                Err(e) => {
+                    println!("{:?}", e);
+                    HttpResponse::InternalServerError()
+                        .content_type("text/html")
+                        .body("<p>Something went wrong!</p>")
+                }
             }
+        } else {
+            HttpResponse::InternalServerError().finish()
         }
     } else {
         HttpResponse::TemporaryRedirect()
@@ -188,16 +223,6 @@ async fn main() -> std::io::Result<()> {
         .map(|e| e.parse::<u16>())
         .unwrap_or(Ok(8080))
         .unwrap_or(8080);
-    // let search = env::var("DIRCAST_SEARCH").unwrap_or("".to_string());
-    // if let Some(bucket) = create_bucket_from_env() {
-    //     if let Ok(results) = bucket.list(search, None).await {
-    //         for result in results {
-    //             for item in result.contents {
-    //                 println!("* {:?}", item);
-    //             }
-    //         }
-    //     }
-    // }
 
     let templates = Tera::new("templates/**/*").unwrap();
 
@@ -205,6 +230,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(templates.clone()))
             .service(web_search)
+            .service(web_search_results)
             .service(login_get)
             .service(login_post)
             .service(styles_css)
