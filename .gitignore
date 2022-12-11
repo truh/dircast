@@ -1,0 +1,5 @@
+/target
+credentials.sh
+*.iml
+.idea
+.direnv/
