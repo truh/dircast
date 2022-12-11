@@ -1,0 +1,23 @@
+body {
+    font-family: "Ubuntu", sans-serif;
+}
+
+header, main {
+    width: 100rem;
+    margin: 0 calc(50vw - 50rem);
+}
+
+form {
+    display: grid;
+}
+
+label {
+    margin-bottom: 0.5rem;
+    font-size: larger;
+}
+
+input {
+    width: 20rem;
+    margin-bottom: 1rem;
+    font-size: larger;
+}

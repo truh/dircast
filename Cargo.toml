@@ -6,7 +6,12 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-actix-web = "4"
+actix-web = { version = "4", features = ["cookies"] }
 aws-creds = "0.30.0"
+cookie = { version = "0.16", features = ["secure", "percent-encode"] }
+htpasswd-verify = "0.2.1"
+rss = "2"
 rust-s3 = "0.32.3"
+serde = { version = "1", feature = ["derive"] }
+tera = "1"
 tokio = { version = "1", features = ["full"] }
