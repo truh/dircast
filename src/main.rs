@@ -27,6 +27,13 @@ struct FileObject {
     url: String,
 }
 
+#[derive(Deserialize, Serialize)]
+struct SlugData {
+    search: String,
+    user: String,
+    pass: String,
+}
+
 struct AppConfig {
     public_url: String,
 }
@@ -122,30 +129,38 @@ async fn web_search_results(
 ) -> impl Responder {
     let search_struct = form.into_inner();
 
-    if check_auth_cookie(req).is_some() {
+    if let Some(auth) = check_auth_cookie(req) {
         if let Some(bucket) = create_bucket_from_env() {
             let search_results = bucket_search(&bucket, search_struct.search.clone()).await;
             let mut context = tera::Context::new();
-            let feed_url = format!("{}/gen_feed/{}/feed.rss", app_config.public_url, '_');
-            context.insert("search_results", &search_results);
-            context.insert("feed_url", &feed_url);
-            let search_query = search_struct.search;
-            context.insert("search_query", &search_query);
 
-            match templates.render("search.html", &context) {
-                Ok(s) => HttpResponse::Ok().content_type("text/html").body(s),
-                Err(e) => {
-                    println!("{:?}", e);
-                    HttpResponse::InternalServerError()
-                        .content_type("text/html")
-                        .body("<p>Something went wrong!</p>")
-                }
+            let slug_data = SlugData {
+                search: search_struct.search.clone(),
+                user: auth.user.clone(),
+                pass: auth.pass.clone(),
+            };
+            if let Ok(slug_json) = serde_json::to_string(&slug_data) {
+                let slug_b64 = base64_url::encode(&slug_json);
+                let feed_url = format!("{}/gen_feed/{}/feed.rss", app_config.public_url, slug_b64);
+                context.insert("search_results", &search_results);
+                context.insert("feed_url", &feed_url);
+                let search_query = search_struct.search;
+                context.insert("search_query", &search_query);
+
+                return match templates.render("search.html", &context) {
+                    Ok(s) => HttpResponse::Ok().content_type("text/html").body(s),
+                    Err(e) => {
+                        println!("{:?}", e);
+                        HttpResponse::InternalServerError()
+                            .content_type("text/html")
+                            .body("<p>Something went wrong!</p>")
+                    }
+                };
             }
-        } else {
-            HttpResponse::InternalServerError()
-                .content_type("text/html")
-                .body("<p>Something went wrong!</p>")
         }
+        return HttpResponse::InternalServerError()
+            .content_type("text/html")
+            .body("<p>Something went wrong!</p>");
     } else {
         HttpResponse::TemporaryRedirect()
             .insert_header(("Location", "/login"))
@@ -227,8 +242,31 @@ async fn styles_css(templates: web::Data<tera::Tera>) -> impl Responder {
     }
 }
 
-// #[get("/gen_feed/{slug}/feed.rss")]
-// async fn gen_feed(params: web::Path<String>) -> impl Responder {
+#[get("/gen_feed/{slug}/feed.rss")]
+async fn gen_feed(params: web::Path<String>) -> impl Responder {
+    let slug_b64 = params.into_inner();
+    if let Ok(slug_json_b) = base64_url::decode(&slug_b64) {
+        if let Ok(slug_json) = std::str::from_utf8(&slug_json_b) {
+            let slug_data_result: serde_json::Result<SlugData> = serde_json::from_str(slug_json);
+            if let Ok(slug_data) = slug_data_result {
+                let auth_struct = AuthStruct {
+                    user: slug_data.user,
+                    pass: slug_data.pass,
+                };
+                if check_auth(&auth_struct) {
+                } else {
+                    return HttpResponse::Unauthorized()
+                        .content_type("text/html")
+                        .body("<p>Unauthorized</p>");
+                }
+            }
+        }
+    }
+
+    return HttpResponse::Ok()
+        .content_type("application/rss+xml")
+        .body("");
+}
 //     let name = params.into_inner();
 //     let mut channel: rss::Channel = ChannelBuilder::default()
 //         .title("")
