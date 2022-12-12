@@ -13,14 +13,22 @@
     <main>
         <form method="post">
             <label for="search-query">Search Query</label>
-            <input type="text" name="search" id="search-query">
-            <input type="submit">
+            <input
+                type="text"
+                name="search"
+                id="search-query"
+                class="text-input"
+                {% if search_query %}
+                value="{{search_query}}"
+                {% endif %}
+            >
+            <input type="submit" class="button">
         </form>
 
         {% if feed_url %}
         <h2>Feed URL</h2>
         <div>
-            <code>{{feed_url}}</code>
+            <a class="feed-url" href="{{feed_url}}">{{feed_url}}</a>
         </div>
         {% endif %}
 
@@ -28,7 +36,8 @@
         <h2>Results</h2>
         <div>
             {% for result in search_results %}
-                <p>{{result.name}} {{result.url}}</p>
+            <h3>{{result.name}}</h3>
+            <p><a href="{{result.url}}">{{result.url}}</a></p>
             {% endfor %}
         </div>
         {% endif %}

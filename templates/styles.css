@@ -17,7 +17,22 @@ label {
 }
 
 input {
-    width: 20rem;
     margin-bottom: 1rem;
     font-size: larger;
+}
+
+.text-input {
+    padding: 1rem;
+}
+
+.button {
+    width: 20rem;
+}
+
+.feed-url {
+    font-family: "Ubuntu Mono", "monospace";
+    padding: 1rem;
+    width: 98%;
+    display: inline-block;
+    background-color: #EEE;
 }

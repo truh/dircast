@@ -27,6 +27,10 @@ struct FileObject {
     url: String,
 }
 
+struct AppConfig {
+    public_url: String,
+}
+
 fn create_bucket_from_env() -> Option<Bucket> {
     if let Ok(bucket_name) = env::var("DIRCAST_BUCKET_NAME") {
         if let Ok(credentials) = awscreds::Credentials::from_env() {
@@ -114,14 +118,19 @@ async fn web_search_results(
     req: HttpRequest,
     form: web::Form<SearchStruct>,
     templates: web::Data<tera::Tera>,
+    app_config: web::Data<AppConfig>,
 ) -> impl Responder {
     let search_struct = form.into_inner();
 
     if check_auth_cookie(req).is_some() {
         if let Some(bucket) = create_bucket_from_env() {
-            let search_results = bucket_search(&bucket, search_struct.search).await;
+            let search_results = bucket_search(&bucket, search_struct.search.clone()).await;
             let mut context = tera::Context::new();
+            let feed_url = format!("{}/gen_feed/{}/feed.rss", app_config.public_url, '_');
             context.insert("search_results", &search_results);
+            context.insert("feed_url", &feed_url);
+            let search_query = search_struct.search;
+            context.insert("search_query", &search_query);
 
             match templates.render("search.html", &context) {
                 Ok(s) => HttpResponse::Ok().content_type("text/html").body(s),
@@ -133,7 +142,9 @@ async fn web_search_results(
                 }
             }
         } else {
-            HttpResponse::InternalServerError().finish()
+            HttpResponse::InternalServerError()
+                .content_type("text/html")
+                .body("<p>Something went wrong!</p>")
         }
     } else {
         HttpResponse::TemporaryRedirect()
@@ -216,6 +227,58 @@ async fn styles_css(templates: web::Data<tera::Tera>) -> impl Responder {
     }
 }
 
+// #[get("/gen_feed/{slug}/feed.rss")]
+// async fn gen_feed(params: web::Path<String>) -> impl Responder {
+//     let name = params.into_inner();
+//     let mut channel: rss::Channel = ChannelBuilder::default()
+//         .title("")
+//         .link("")
+//         .description("")
+//         .build();
+//     if let Some(bucket) = create_bucket_from_env() {
+//         let search_results = bucket_search(&bucket, "").await;
+//     } else {
+//         HttpResponse::InternalServerError()
+//             .content_type("text/html")
+//             .body("<p>Something went wrong!</p>")
+//     }
+//     let items = details
+//         .iter()
+//         .filter_map(|option| option.as_ref())
+//         .map(|detail| {
+//             let enclosure = detail.media_url.as_ref().map(|u| {
+//                 let mut e = rss::Enclosure::default();
+//                 e.set_url(u);
+//                 e
+//             });
+//             let guid = detail.link.as_ref().map(|l| {
+//                 let mut g = rss::Guid::default();
+//                 g.set_permalink(true);
+//                 g.set_value(l);
+//                 g
+//             });
+//             Item {
+//                 title: detail.title.clone(),
+//                 link: detail.link.clone(),
+//                 description: detail.description.clone(),
+//                 author: detail.author.clone(),
+//                 categories: vec![],
+//                 comments: None,
+//                 enclosure,
+//                 guid,
+//                 pub_date: None,
+//                 source: None,
+//                 content: None,
+//                 extensions: Default::default(),
+//                 itunes_ext: None,
+//                 dublin_core_ext: None,
+//             }
+//         })
+//         .collect();
+//     channel.items = items;
+//     channel.to_string()
+// }
+
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
     let host = env::var("DIRCAST_HOST").unwrap_or_else(|_| String::from("127.0.0.1"));
@@ -223,12 +286,18 @@ async fn main() -> std::io::Result<()> {
         .map(|e| e.parse::<u16>())
         .unwrap_or(Ok(8080))
         .unwrap_or(8080);
+    let public_url =
+        env::var("DIRCAST_PUBLIC_URL").unwrap_or_else(|_| format!("http://{}:{}", host, port));
 
     let templates = Tera::new("templates/**/*").unwrap();
 
     HttpServer::new(move || {
+        let app_config = AppConfig {
+            public_url: String::from(public_url.as_str()),
+        };
         App::new()
             .app_data(web::Data::new(templates.clone()))
+            .app_data(web::Data::new(app_config))
             .service(web_search)
             .service(web_search_results)
             .service(login_get)
