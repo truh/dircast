@@ -29,6 +29,9 @@ struct FileObject {
     name: String,
     url: String,
     e_tag: Option<String>,
+    key: String,
+    length: u64,
+    mime_type: Option<String>,
 }
 
 impl Ord for FileObject {
@@ -81,9 +84,12 @@ async fn bucket_search(bucket: &Bucket, query: String) -> Vec<FileObject> {
             for item in result.contents {
                 if let Ok(url) = bucket.presign_get(item.key.as_str(), 86400, None) {
                     v.push(FileObject {
-                        name: item.key,
+                        name: item.key.clone(),
                         url,
                         e_tag: item.e_tag,
+                        key: item.key,
+                        length: item.size,
+                        mime_type: Some(String::from("audio/mp3")),
                     });
                 }
             }
@@ -297,11 +303,12 @@ async fn gen_feed(params: web::Path<String>, app_config: web::Data<AppConfig>) -
                         for (i, file_object) in search_results.iter().enumerate() {
                             let mut enclosure = rss::Enclosure::default();
                             enclosure.set_url(file_object.url.clone());
-                            let guid = file_object.e_tag.clone().map(|e_tag| {
-                                let mut g = rss::Guid::default();
-                                g.set_value(e_tag);
-                                g
-                            });
+                            enclosure.set_length(format!("{}", file_object.length));
+                            if let Some(mime_type) = &file_object.mime_type {
+                                enclosure.set_mime_type(mime_type.clone());
+                            }
+                            let mut guid = rss::Guid::default();
+                            guid.set_value(file_object.key.clone());
                             items.push(Item {
                                 title: Some(format!("{} {}", &title, i + 1)),
                                 link: Some(app_config.public_url.clone()),
@@ -309,7 +316,7 @@ async fn gen_feed(params: web::Path<String>, app_config: web::Data<AppConfig>) -
                                 author: Some(author.clone()),
                                 categories: vec![],
                                 enclosure: Some(enclosure),
-                                guid,
+                                guid: Some(guid),
                                 comments: None,
                                 pub_date: None,
                                 source: None,
