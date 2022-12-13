@@ -12,15 +12,35 @@
     <header><h1>dircast</h1></header>
     <main>
         <form method="post">
-            <label for="search-query">Search Query</label>
+            <label for="field-search">Search Query</label>
             <input
                 type="text"
                 name="search"
-                id="search-query"
+                id="field-search"
                 class="text-input"
                 {% if search_query %}
                 value="{{search_query}}"
                 {% endif %}
+            >
+            <label for="field-title">Title</label>
+            <input
+                    type="text"
+                    name="title"
+                    id="field-title"
+                    class="text-input"
+                    {% if title_query %}
+                    value="{{title_query}}"
+                    {% endif %}
+            >
+            <label for="field-author">Author</label>
+            <input
+                    type="text"
+                    name="title"
+                    id="field-author"
+                    class="text-input"
+                    {% if author_query %}
+                    value="{{author_query}}"
+                    {% endif %}
             >
             <input type="submit" class="button">
         </form>

@@ -18,7 +18,9 @@ struct AuthStruct {
 
 #[derive(Deserialize)]
 struct SearchStruct {
+    author: String,
     search: String,
+    title: String,
 }
 
 #[derive(Serialize)]
@@ -30,7 +32,9 @@ struct FileObject {
 
 #[derive(Deserialize, Serialize)]
 struct SlugData {
+    author: String,
     search: String,
+    title: String,
     user: String,
     pass: String,
 }
@@ -137,17 +141,27 @@ async fn web_search_results(
             let mut context = tera::Context::new();
 
             let slug_data = SlugData {
+                author: search_struct.author.clone(),
                 search: search_struct.search.clone(),
+                title: search_struct.title.clone(),
                 user: auth.user.clone(),
                 pass: auth.pass.clone(),
             };
             if let Ok(slug_json) = serde_json::to_string(&slug_data) {
+                context.insert("search_results", &search_results);
+
                 let slug_b64 = base64_url::encode(&slug_json);
                 let feed_url = format!("{}/gen_feed/{}/feed.rss", app_config.public_url, slug_b64);
-                context.insert("search_results", &search_results);
                 context.insert("feed_url", &feed_url);
+
+                let author_query = search_struct.author;
+                context.insert("author_query", &author_query);
+
                 let search_query = search_struct.search;
                 context.insert("search_query", &search_query);
+
+                let title_query = search_struct.title;
+                context.insert("title_query", &title_query);
 
                 return match templates.render("search.html", &context) {
                     Ok(s) => HttpResponse::Ok().content_type("text/html").body(s),
@@ -255,28 +269,30 @@ async fn gen_feed(params: web::Path<String>) -> impl Responder {
                     user: slug_data.user,
                     pass: slug_data.pass,
                 };
+                let title = slug_data.title.clone();
+                let author = slug_data.author.clone();
                 if check_auth(&auth_struct) {
                     if let Some(bucket) = create_bucket_from_env() {
                         let search_results = bucket_search(&bucket, slug_data.search.clone()).await;
                         let mut channel: rss::Channel = ChannelBuilder::default()
-                            .title("")
+                            .title(slug_data.title)
                             // .link("")
                             // .description("")
                             .build();
                         let mut items: Vec<Item> = Vec::new();
-                        for file_object in search_results {
+                        for (i, file_object) in search_results.iter().enumerate() {
                             let mut enclosure = rss::Enclosure::default();
-                            enclosure.set_url(file_object.url);
-                            let guid = file_object.e_tag.map(|e_tag| {
+                            enclosure.set_url(file_object.url.clone());
+                            let guid = file_object.e_tag.clone().map(|e_tag| {
                                 let mut g = rss::Guid::default();
                                 g.set_value(e_tag);
                                 g
                             });
                             items.push(Item {
-                                title: None,
+                                title: Some(format!("{} {}", &title, i)),
                                 link: None,
                                 description: None,
-                                author: None,
+                                author: Some(author.clone()),
                                 categories: vec![],
                                 enclosure: Some(enclosure),
                                 guid,
