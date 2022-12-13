@@ -6,6 +6,7 @@ use s3::Bucket;
 use s3::Region;
 use serde::Deserialize;
 use serde::Serialize;
+use std::cmp::Ordering;
 use std::env;
 use std::fs;
 use tera::Tera;
@@ -23,11 +24,23 @@ struct SearchStruct {
     title: String,
 }
 
-#[derive(Serialize)]
+#[derive(Eq, Serialize, PartialEq)]
 struct FileObject {
     name: String,
     url: String,
     e_tag: Option<String>,
+}
+
+impl Ord for FileObject {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.name.cmp(&other.name)
+    }
+}
+
+impl PartialOrd for FileObject {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -76,6 +89,7 @@ async fn bucket_search(bucket: &Bucket, query: String) -> Vec<FileObject> {
             }
         }
     }
+    v.sort();
     v
 }
 
