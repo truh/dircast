@@ -1,7 +1,7 @@
 use actix_web::{
     cookie::Cookie, get, post, web, App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
-// use rss::{ChannelBuilder, Item};
+use rss::{ChannelBuilder, Item};
 use s3::Bucket;
 use s3::Region;
 use serde::Deserialize;
@@ -25,6 +25,7 @@ struct SearchStruct {
 struct FileObject {
     name: String,
     url: String,
+    e_tag: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -65,6 +66,7 @@ async fn bucket_search(bucket: &Bucket, query: String) -> Vec<FileObject> {
                     v.push(FileObject {
                         name: item.key,
                         url,
+                        e_tag: item.e_tag,
                     });
                 }
             }
@@ -254,6 +256,44 @@ async fn gen_feed(params: web::Path<String>) -> impl Responder {
                     pass: slug_data.pass,
                 };
                 if check_auth(&auth_struct) {
+                    if let Some(bucket) = create_bucket_from_env() {
+                        let search_results = bucket_search(&bucket, slug_data.search.clone()).await;
+                        let mut channel: rss::Channel = ChannelBuilder::default()
+                            .title("")
+                            // .link("")
+                            // .description("")
+                            .build();
+                        let mut items: Vec<Item> = Vec::new();
+                        for file_object in search_results {
+                            let mut enclosure = rss::Enclosure::default();
+                            enclosure.set_url(file_object.url);
+                            let guid = file_object.e_tag.map(|e_tag| {
+                                let mut g = rss::Guid::default();
+                                g.set_value(e_tag);
+                                g
+                            });
+                            items.push(Item {
+                                title: None,
+                                link: None,
+                                description: None,
+                                author: None,
+                                categories: vec![],
+                                enclosure: Some(enclosure),
+                                guid,
+                                comments: None,
+                                pub_date: None,
+                                source: None,
+                                content: None,
+                                extensions: Default::default(),
+                                itunes_ext: None,
+                                dublin_core_ext: None,
+                            });
+                        }
+                        channel.items = items;
+                        return HttpResponse::Ok()
+                            .content_type("application/rss+xml")
+                            .body(channel.to_string());
+                    }
                 } else {
                     return HttpResponse::Unauthorized()
                         .content_type("text/html")
@@ -263,59 +303,10 @@ async fn gen_feed(params: web::Path<String>) -> impl Responder {
         }
     }
 
-    return HttpResponse::Ok()
-        .content_type("application/rss+xml")
-        .body("");
+    HttpResponse::InternalServerError()
+        .content_type("text/html")
+        .body("<p>Something went wrong!</p>")
 }
-//     let name = params.into_inner();
-//     let mut channel: rss::Channel = ChannelBuilder::default()
-//         .title("")
-//         .link("")
-//         .description("")
-//         .build();
-//     if let Some(bucket) = create_bucket_from_env() {
-//         let search_results = bucket_search(&bucket, "").await;
-//     } else {
-//         HttpResponse::InternalServerError()
-//             .content_type("text/html")
-//             .body("<p>Something went wrong!</p>")
-//     }
-//     let items = details
-//         .iter()
-//         .filter_map(|option| option.as_ref())
-//         .map(|detail| {
-//             let enclosure = detail.media_url.as_ref().map(|u| {
-//                 let mut e = rss::Enclosure::default();
-//                 e.set_url(u);
-//                 e
-//             });
-//             let guid = detail.link.as_ref().map(|l| {
-//                 let mut g = rss::Guid::default();
-//                 g.set_permalink(true);
-//                 g.set_value(l);
-//                 g
-//             });
-//             Item {
-//                 title: detail.title.clone(),
-//                 link: detail.link.clone(),
-//                 description: detail.description.clone(),
-//                 author: detail.author.clone(),
-//                 categories: vec![],
-//                 comments: None,
-//                 enclosure,
-//                 guid,
-//                 pub_date: None,
-//                 source: None,
-//                 content: None,
-//                 extensions: Default::default(),
-//                 itunes_ext: None,
-//                 dublin_core_ext: None,
-//             }
-//         })
-//         .collect();
-//     channel.items = items;
-//     channel.to_string()
-// }
 
 #[tokio::main]
 async fn main() -> std::io::Result<()> {
@@ -340,6 +331,7 @@ async fn main() -> std::io::Result<()> {
             .service(web_search_results)
             .service(login_get)
             .service(login_post)
+            .service(gen_feed)
             .service(styles_css)
     })
     .bind((host.as_str(), port))?
