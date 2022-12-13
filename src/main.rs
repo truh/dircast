@@ -310,7 +310,7 @@ async fn gen_feed(params: web::Path<String>, app_config: web::Data<AppConfig>) -
                             let mut guid = rss::Guid::default();
                             guid.set_value(file_object.key.clone());
                             items.push(Item {
-                                title: Some(format!("{} {}", &title, i + 1)),
+                                title: Some(format!("{} {:03}", &title, i + 1)),
                                 link: Some(app_config.public_url.clone()),
                                 description: Some(String::from("")),
                                 author: Some(author.clone()),
