@@ -289,7 +289,7 @@ async fn gen_feed(params: web::Path<String>) -> impl Responder {
                                 g
                             });
                             items.push(Item {
-                                title: Some(format!("{} {}", &title, i)),
+                                title: Some(format!("{} {}", &title, i + 1)),
                                 link: None,
                                 description: None,
                                 author: Some(author.clone()),
