@@ -273,7 +273,7 @@ async fn styles_css(templates: web::Data<tera::Tera>) -> impl Responder {
 }
 
 #[get("/gen_feed/{slug}/feed.rss")]
-async fn gen_feed(params: web::Path<String>) -> impl Responder {
+async fn gen_feed(params: web::Path<String>, app_config: web::Data<AppConfig>) -> impl Responder {
     let slug_b64 = params.into_inner();
     if let Ok(slug_json_b) = base64_url::decode(&slug_b64) {
         if let Ok(slug_json) = std::str::from_utf8(&slug_json_b) {
@@ -304,8 +304,8 @@ async fn gen_feed(params: web::Path<String>) -> impl Responder {
                             });
                             items.push(Item {
                                 title: Some(format!("{} {}", &title, i + 1)),
-                                link: None,
-                                description: None,
+                                link: Some(app_config.public_url.clone()),
+                                description: Some(String::from("")),
                                 author: Some(author.clone()),
                                 categories: vec![],
                                 enclosure: Some(enclosure),
